@@ -56,7 +56,7 @@ class CreateEventModal(discord.ui.Modal, title="Создание события"
             channel = new_interaction.guild.get_channel(channel_id)
             event_state = EventState()
             embed = render_groups_embed(event_info, event_state)
-            view = ParticipantView(event_state, guild_id)  # Исправлено: добавлен guild_id
+            view = ParticipantView(event_state, guild_id)
             if guild_id not in active_events:
                 active_events[guild_id] = []
             sent_message = await channel.send(embed=embed, view=view)
@@ -66,14 +66,15 @@ class CreateEventModal(discord.ui.Modal, title="Создание события"
                 "event_info": event_info,
                 "event_state": event_state
             })
-            await new_interaction.response.send_message("📨 Событие создано!", ephemeral=True)
+            # Удаляем подтверждающее сообщение через 10 сек
+            await new_interaction.response.send_message("📨 Событие создано!", ephemeral=False, delete_after=10)
 
-        # Используем ChannelSelectView только с каналами текущей гильдии
         view = ChannelSelectView(interaction.client, after_channel_selected)
-        # Гарантируем, что view показывает каналы этой гильдии
         await view.setup(interaction.guild)
+        # Сообщение выбора канала удалится через 15 сек
         await interaction.response.send_message(
             "Выберите канал для публикации события:",
             view=view,
-            ephemeral=True
+            ephemeral=False,
+            delete_after=15
         )

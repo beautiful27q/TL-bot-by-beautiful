@@ -1,5 +1,5 @@
 import discord
-from storage.memory import memory, active_events, EventState  # Исправлен импорт
+from storage.memory import memory, active_events, EventState
 from logic.render import render_groups_embed
 from views.participant import ParticipantView
 from datetime import datetime, timedelta
@@ -64,7 +64,8 @@ class RecurringEventModal(discord.ui.Modal, title="Создание повтор
 
                 await new_interaction.response.send_message(
                     f"✅ Запланировано событие **{self.name.value}** каждые {interval_days} дн. с {start_date_str} в {hour:02d}:{minute:02d}",
-                    ephemeral=True
+                    ephemeral=False,
+                    delete_after=10
                 )
 
                 sync_presets_to_event_state(guild_id)
@@ -108,7 +109,8 @@ class RecurringEventModal(discord.ui.Modal, title="Создание повтор
             await interaction.response.send_message(
                 "Выберите канал для публикации события:",
                 view=view,
-                ephemeral=True
+                ephemeral=False,
+                delete_after=15
             )
 
         except Exception as e:

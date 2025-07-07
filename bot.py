@@ -31,7 +31,6 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 # --- Инициализация хранилища по всем гильдиям ---
 @bot.event
 async def on_ready():
-    # Загрузка/инициализация данных для всех гильдий
     for guild in bot.guilds:
         load_presets(guild.id)
         load_user_roles(guild.id)
@@ -46,11 +45,14 @@ async def on_ready():
 @bot.command(name="админ_панель")
 async def admin_panel(ctx):
     if not any(role.name in ALLOWED_ROLES for role in ctx.author.roles):
-        return await ctx.send("⛔ У тебя нет прав доступа.")
-    await ctx.send("🔧 Панель администратора:", view=AdminPanelView(ctx.guild.id))
+        return await ctx.send("⛔ У тебя нет прав доступа.", delete_after=10)
+    await ctx.send("🔧 Панель администратора:", view=AdminPanelView(ctx.guild.id), delete_after=30)
 
 @bot.command(name="роль")
 async def set_role(ctx, *, role: str):
+    if ctx.message.mentions and ctx.author not in ctx.message.mentions:
+        return await ctx.send("❌ Вы не можете менять роль другому пользователю.", delete_after=10)
+
     role = role.lower()
     user_id = ctx.author.id
     guild_id = ctx.guild.id
@@ -59,19 +61,18 @@ async def set_role(ctx, *, role: str):
     if role in ["танк", "tank"]:
         memory.user_roles[guild_id][user_id] = "танк"
         save_user_roles(guild_id)
-        await ctx.send("🛡 Роль установлена: Танк")
+        await ctx.send("🛡 Роль установлена: Танк", delete_after=10)
     elif role in ["хил", "healer", "хилер"]:
         memory.user_roles[guild_id][user_id] = "хил"
         save_user_roles(guild_id)
-        await ctx.send("💉 Роль установлена: Хил")
+        await ctx.send("💉 Роль установлена: Хил", delete_after=10)
     elif role in ["дд", "dd"]:
         memory.user_roles[guild_id][user_id] = "дд"
         save_user_roles(guild_id)
-        await ctx.send("⚔ Роль установлена: ДД")
+        await ctx.send("⚔ Роль установлена: ДД", delete_after=10)
     else:
-        await ctx.send("❌ Неизвестная роль. Доступные: танк, хил, дд")
+        await ctx.send("❌ Неизвестная роль. Доступные: танк, хил, дд", delete_after=10)
         return
-    # Обновляем роль пользователя во всех активных событиях этой гильдии
     for event in active_events.get(guild_id, []):
         state = event["event_state"]
         if user_id in state.user_roles:
@@ -199,7 +200,6 @@ async def event_autocleanup():
                 pass
             events.remove(event)
 
-# Получаем токен из окружения и запускаем бота
 TOKEN = os.getenv('DISCORD_TOKEN')
 if not TOKEN:
     raise RuntimeError("Discord token not found! Set DISCORD_TOKEN in .env or environment.")

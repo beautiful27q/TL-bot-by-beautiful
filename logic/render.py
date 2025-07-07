@@ -1,6 +1,7 @@
 import discord
 from typing import List, Dict, Optional, Tuple
 from datetime import datetime, timedelta
+from storage.memory import memory  # <--- Добавлено для доступа к глобальным ролям
 
 def get_username(user_id: int) -> str:
     return f"<@{user_id}>"
@@ -9,6 +10,7 @@ ROLE_EMOJIS = {
     "лидер": "👑",
     "танк": "🛡️",
     "хил": "💉",
+    "дд": "⚔️",
     "дд1": "⚔️",
     "дд2": "⚔️",
     "дд3": "⚔️",
@@ -44,13 +46,30 @@ def humanize_timedelta(event_dt: datetime) -> str:
             ago_str = f"{minutes} мин. назад"
         return f"**🔴 Завершено {ago_str}**"
 
-def render_declined(declined: List[int], user_roles: Dict[int, str]) -> Optional[str]:
+def render_declined(declined: List[int], user_roles: Dict[int, str], event_guild_id: Optional[int] = None) -> Optional[str]:
     if not declined:
         return None
-    lines = [
-        f"{ROLE_EMOJIS.get(user_roles.get(uid, 'нет'), '❌')} {get_username(uid)} ({user_roles.get(uid, 'нет')})"
-        for uid in declined
-    ]
+    role_map = {
+        "танк": "Танк",
+        "хил": "Хил",
+        "дд": "ДД",
+        "дд1": "ДД",
+        "дд2": "ДД",
+        "дд3": "ДД",
+        "дд4": "ДД"
+    }
+    lines = []
+    for uid in declined:
+        # Получаем роль сначала из локального event_state, потом из глобального хранилища
+        role_key = user_roles.get(uid)
+        if not role_key and event_guild_id is not None:
+            # Берём глобальную роль, если есть
+            role_key = memory.user_roles.get(event_guild_id, {}).get(uid, 'нет')
+        if not role_key:
+            role_key = 'нет'
+        role_str = role_map.get(role_key, "Нет") if role_key != "нет" else "Нет"
+        emoji = ROLE_EMOJIS.get(role_key, "❌")
+        lines.append(f"{emoji} {get_username(uid)} ({role_str})")
     return "❌ **Не смогут:**\n" + "\n".join(lines)
 
 def render_group(group: Dict[str, Optional[int]], idx: int) -> str:
@@ -63,9 +82,25 @@ def render_group(group: Dict[str, Optional[int]], idx: int) -> str:
     for role in ["танк", "хил", "дд1", "дд2", "дд3", "дд4"]:
         uid = group.get(role)
         if uid is not None:
-            lines.append(f"{ROLE_EMOJIS.get(role, '❌')} {role.capitalize()}: {get_username(uid)}")
+            role_disp = {
+                "танк": "Танк",
+                "хил": "Хил",
+                "дд1": "ДД1",
+                "дд2": "ДД2",
+                "дд3": "ДД3",
+                "дд4": "ДД4",
+            }.get(role, role.capitalize())
+            lines.append(f"{ROLE_EMOJIS.get(role if role in ROLE_EMOJIS else 'дд', '❌')} {role_disp}: {get_username(uid)}")
         else:
-            lines.append(f"{ROLE_EMOJIS.get('нет', '❌')} {role.capitalize()}: Нет")
+            role_disp = {
+                "танк": "Танк",
+                "хил": "Хил",
+                "дд1": "ДД1",
+                "дд2": "ДД2",
+                "дд3": "ДД3",
+                "дд4": "ДД4",
+            }.get(role, role.capitalize())
+            lines.append(f"{ROLE_EMOJIS.get('нет', '❌')} {role_disp}: Нет")
     return "\n".join(lines)
 
 def render_groups(groups: List[Dict[str, Optional[int]]]) -> List[str]:
@@ -84,14 +119,9 @@ def build_event_embed(
     color: int = 0x00aaff
 ) -> discord.Embed:
     is_recurring = event_info.get("is_recurring", False)
-    # --- Title: с иконкой если повторяющееся ---
     title_icon = "🔁🛡️" if is_recurring else "🛡️"
     title = f"{title_icon} {event_info.get('name', 'Событие')}"
-
-    # --- Description: только нужное ---
     description_lines = []
-
-    # Получаем дату события и приводим к формату "ДД.ММ.ГГГГ чч:мм"
     raw_dt = event_info.get('datetime', '—')
     try:
         dt = None
@@ -110,7 +140,6 @@ def build_event_embed(
 
     description_lines.append(f"**Начало:** {dt_str}")
 
-    # Комментарий к событию (если есть)
     comment = event_info.get('comment', None)
     if comment:
         description_lines.append(f"💬 {comment}")
@@ -123,9 +152,9 @@ def build_event_embed(
         color=color
     )
 
-    # --- declined пользователей (вывод "не смогут")
-    # event_state.user_roles теперь должен быть везде локальным для события!
-    declined_block = render_declined(event_state.get_declined_list(), event_state.user_roles)
+    # Получаем guild_id для поиска глобальных ролей
+    guild_id = event_info.get("guild_id") or event_info.get("guild", {}).get("id")
+    declined_block = render_declined(event_state.get_declined_list(), event_state.user_roles, guild_id)
     if declined_block:
         embed.add_field(name="\u200b", value=declined_block, inline=False)
 
@@ -140,7 +169,6 @@ def build_event_embed(
                 inline=True
             )
 
-    # Время до события / после события
     event_dt = None
     try:
         for fmt in ("%d-%m-%Y %H:%M", "%Y-%m-%d %H:%M", "%d.%m.%Y %H:%M"):
@@ -170,7 +198,6 @@ def build_event_embed(
         inline=True
     )
 
-    # Footer: разные эмодзи для обычного и повторяющегося события
     if is_recurring:
         embed.set_footer(text="🔁 Повторяющееся событие • \n🐧 Created by beautiful")
     else:
@@ -206,5 +233,4 @@ def build_event_buttons(registration_open: bool) -> discord.ui.View:
     )
     return view
 
-# Алиас для совместимости со старым импортом
 render_groups_embed = build_event_embed
