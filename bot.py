@@ -21,6 +21,9 @@ from discord.errors import NotFound
 from cleanup import cleanup_events_and_members
 from views.channel_select import ChannelSelectView
 
+import pytz
+moscow_tz = pytz.timezone("Europe/Moscow")
+
 intents = discord.Intents.default()
 intents.message_content = True
 intents.guilds = True
@@ -96,38 +99,35 @@ async def update_event_embeds():
 
 @tasks.loop(minutes=1)
 async def recurring_event_scheduler():
-    now = datetime.now()
+    now = datetime.now(moscow_tz)
     has_new_event = False
     for guild_id, schedules in memory.schedules.items():
         for sched in schedules:
             next_run = sched.get("next_run")
-            if not next_run:
+            event_start = sched.get("event_start")
+            interval_days = int(sched.get("interval_days", 1))
+            if not next_run or not event_start:
                 continue
-            if isinstance(next_run, str):
-                parsed = False
-                for fmt in ("%d-%m-%Y %H:%M", "%Y-%m-%d %H:%M", "%d.%m.%Y %H:%M"):
-                    try:
-                        next_run_dt = datetime.strptime(next_run, fmt)
-                        parsed = True
-                        break
-                    except Exception:
-                        continue
-                if not parsed:
-                    continue
-            else:
-                next_run_dt = next_run
+
+            # ISO8601 parse
+            try:
+                next_run_dt = datetime.fromisoformat(next_run)
+                event_start_dt = datetime.fromisoformat(event_start)
+            except Exception:
+                continue
+
             if now >= next_run_dt:
                 has_new_event = True
                 event_info = {
                     "name": sched.get("name", "Событие"),
-                    "datetime": next_run_dt.strftime("%d.%m.%Y %H:%M"),
+                    "datetime": event_start_dt.isoformat(),  # время самого события!
                     "comment": sched.get("comment", "—"),
                     "created_by": sched.get("created_by"),
                     "is_recurring": True,
                     "recurring_start_date": sched.get("recurring_start_date") or sched.get("start_date"),
                     "recurring_interval_days": sched.get("interval_days"),
                     "schedule_id": sched.get("schedule_id", None),
-                    "created_at": datetime.now().isoformat(),
+                    "created_at": datetime.now(moscow_tz).isoformat(),
                     "selected_channel_id": sched.get("selected_channel_id")
                 }
                 event_state = EventState()
@@ -160,13 +160,12 @@ async def recurring_event_scheduler():
                     })
                     sched["message_id"] = sent_message.id
                     sched["channel_id"] = sent_message.channel.id
-                interval_days = sched.get("interval_days", 1)
-                try:
-                    interval_days = int(interval_days)
-                except Exception:
-                    interval_days = 1
-                next_run_dt = next_run_dt + timedelta(days=interval_days)
-                sched["next_run"] = next_run_dt.strftime("%d.%m.%Y %H:%M")
+
+                # Пересчёт на следующий цикл
+                event_start_dt = event_start_dt + timedelta(days=interval_days)
+                next_run_dt = event_start_dt - timedelta(hours=3)
+                sched["event_start"] = event_start_dt.isoformat()
+                sched["next_run"] = next_run_dt.isoformat()
     if has_new_event:
         for guild in bot.guilds:
             save_schedules(guild.id)

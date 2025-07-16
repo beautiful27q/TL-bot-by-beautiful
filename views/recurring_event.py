@@ -43,13 +43,22 @@ class RecurringEventModal(discord.ui.Modal, title="Создание повтор
 
             interval_days = int(self.interval.value.strip())
 
-            # Создаём наивное время и локализуем его через pytz
-            next_run_naive = start_date_naive.replace(hour=hour, minute=minute, second=0, microsecond=0)
-            next_run = moscow_tz.localize(next_run_naive)
-
+            # Дата и время старта первого события
+            start_dt_naive = start_date_naive.replace(hour=hour, minute=minute, second=0, microsecond=0)
+            start_dt = moscow_tz.localize(start_dt_naive)
             now = datetime.now(moscow_tz)
+
+            # Сколько прошло дней от старта до сейчас
+            days_passed = (now - start_dt).days
+            intervals_passed = max(0, (days_passed // interval_days) + 1)
+            event_start = start_dt + timedelta(days=intervals_passed * interval_days)
+
+            # Время публикации события за 3 часа до начала
+            next_run = event_start - timedelta(hours=3)
+            # Если next_run в прошлом — поднимаем к следующему циклу
             while next_run <= now:
-                next_run += timedelta(days=interval_days)
+                event_start += timedelta(days=interval_days)
+                next_run = event_start - timedelta(hours=3)
 
             schedule_id = str(uuid.uuid4())
 
@@ -59,7 +68,8 @@ class RecurringEventModal(discord.ui.Modal, title="Создание повтор
                     "name": self.name.value,
                     "interval_days": interval_days,
                     "comment": self.comment.value,
-                    "next_run": next_run.isoformat(),  # Сохраняем ISO-строку с tzinfo
+                    "next_run": next_run.isoformat(),  # Когда публиковать следующее событие
+                    "event_start": event_start.isoformat(),  # Когда начнётся само событие
                     "created_by": interaction.user.id,
                     "recurring_start_date": start_date_str,
                     "selected_channel_id": channel_id,
@@ -71,7 +81,8 @@ class RecurringEventModal(discord.ui.Modal, title="Создание повтор
                 save_schedules(guild_id)
 
                 await new_interaction.response.send_message(
-                    f"✅ Запланировано событие **{self.name.value}** каждые {interval_days} дн. с {start_date_str} в {hour:02d}:{minute:02d}",
+                    f"✅ Запланировано событие **{self.name.value}** каждые {interval_days} дн. с {start_date_str} в {hour:02d}:{minute:02d}. "
+                    f"Публикация за 3 часа до старта.",
                     ephemeral=False,
                     delete_after=10
                 )
@@ -79,10 +90,9 @@ class RecurringEventModal(discord.ui.Modal, title="Создание повтор
                 sync_presets_to_event_state(guild_id)
                 channel = new_interaction.guild.get_channel(channel_id)
                 if channel is not None:
-                    dt_str = next_run.strftime("%d.%m.%Y %H:%M")
                     event_info = {
                         "name": str(self.name.value),
-                        "datetime": next_run.isoformat(),  # Сохраняем ISO-строку с tzinfo
+                        "datetime": event_start.isoformat(),  # Время самого события
                         "comment": str(self.comment.value or "—"),
                         "created_by": interaction.user.id,
                         "is_recurring": True,

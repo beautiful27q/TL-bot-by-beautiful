@@ -3,6 +3,9 @@ from typing import List, Dict, Optional, Tuple
 from datetime import datetime, timedelta
 from storage.memory import memory  # <--- Добавлено для доступа к глобальным ролям
 
+import pytz
+moscow_tz = pytz.timezone("Europe/Moscow")  # FIX: импорт и объявление таймзоны
+
 def get_username(user_id: int) -> str:
     return f"<@{user_id}>"
 
@@ -19,7 +22,11 @@ ROLE_EMOJIS = {
 }
 
 def humanize_timedelta(event_dt: datetime) -> str:
-    now = datetime.now()
+    # FIX: если event_dt содержит tzinfo, берём now тоже с таймзоной
+    if event_dt and event_dt.tzinfo:
+        now = datetime.now(event_dt.tzinfo)
+    else:
+        now = datetime.now(moscow_tz)
     delta = event_dt - now
     total_seconds = int(delta.total_seconds())
 
@@ -123,20 +130,21 @@ def build_event_embed(
     title = f"{title_icon} {event_info.get('name', 'Событие')}"
     description_lines = []
     raw_dt = event_info.get('datetime', '—')
+
+    # FIX: корректный парсинг ISO-строки с таймзоной
+    dt = None
     try:
-        dt = None
+        dt = datetime.fromisoformat(raw_dt)
+        dt_str = dt.strftime("%d.%m.%Y %H:%M")
+    except Exception:
+        # Если вдруг не ISO, пробуем старые форматы
         for fmt in ("%d-%m-%Y %H:%M", "%Y-%m-%d %H:%M", "%d.%m.%Y %H:%M"):
             try:
                 dt = datetime.strptime(raw_dt, fmt)
+                dt_str = dt.strftime("%d.%m.%Y %H:%M")
                 break
             except Exception:
-                continue
-        if dt:
-            dt_str = dt.strftime("%d.%m.%Y %H:%M")
-        else:
-            dt_str = raw_dt
-    except Exception:
-        dt_str = raw_dt
+                dt_str = raw_dt
 
     description_lines.append(f"**Начало:** {dt_str}")
 
@@ -169,16 +177,8 @@ def build_event_embed(
                 inline=True
             )
 
-    event_dt = None
-    try:
-        for fmt in ("%d-%m-%Y %H:%M", "%Y-%m-%d %H:%M", "%d.%m.%Y %H:%M"):
-            try:
-                event_dt = datetime.strptime(event_info.get('datetime'), fmt)
-                break
-            except Exception:
-                continue
-    except Exception:
-        pass
+    # FIX: считаем время до события по ISO-строке
+    event_dt = dt
     time_left_str = humanize_timedelta(event_dt) if event_dt else "—"
 
     embed.add_field(
@@ -187,7 +187,7 @@ def build_event_embed(
         inline=True
     )
 
-    if event_dt and event_dt < datetime.now():
+    if event_dt and event_dt < (datetime.now(event_dt.tzinfo) if event_dt.tzinfo else datetime.now(moscow_tz)):
         status_str = "🔴 Событие завершено"
     else:
         status_str = "🟢 Регистрация открыта"
