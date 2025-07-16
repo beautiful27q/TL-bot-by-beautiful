@@ -110,7 +110,6 @@ async def recurring_event_scheduler():
             if not next_run or not event_start:
                 continue
 
-            # ISO8601 parse
             try:
                 next_run_dt = datetime.fromisoformat(next_run)
                 event_start_dt = datetime.fromisoformat(event_start)
@@ -118,11 +117,12 @@ async def recurring_event_scheduler():
                 continue
 
             # 1. Публикуем событие только если не опубликовано для этого цикла!
-            if now >= next_run_dt and not published:
+            # (и только если next_run_dt < event_start_dt, чтобы не публиковать после завершения)
+            if now >= next_run_dt and not published and now < event_start_dt:
                 has_new_event = True
                 event_info = {
                     "name": sched.get("name", "Событие"),
-                    "datetime": event_start_dt.isoformat(),  # время самого события!
+                    "datetime": event_start_dt.isoformat(),
                     "comment": sched.get("comment", "—"),
                     "created_by": sched.get("created_by"),
                     "is_recurring": True,
@@ -163,17 +163,16 @@ async def recurring_event_scheduler():
                     sched["message_id"] = sent_message.id
                     sched["channel_id"] = sent_message.channel.id
 
-                # Помечаем событие как опубликованное!
                 sched["published"] = True
 
             # 2. После завершения события сдвигаем дату на следующий цикл и сбрасываем published
+            # (и не публикуем новое событие сразу после сдвига!)
             if now >= event_start_dt and published:
-                # Сдвигаем дату на следующий цикл
                 event_start_dt = event_start_dt + timedelta(days=interval_days)
                 next_run_dt = event_start_dt - timedelta(hours=3)
                 sched["event_start"] = event_start_dt.isoformat()
                 sched["next_run"] = next_run_dt.isoformat()
-                sched["published"] = False  # сбрасываем, чтобы можно было опубликовать новое событие
+                sched["published"] = False
 
     if has_new_event:
         for guild in bot.guilds:
