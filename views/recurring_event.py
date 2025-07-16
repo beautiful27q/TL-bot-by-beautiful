@@ -48,17 +48,17 @@ class RecurringEventModal(discord.ui.Modal, title="Создание повтор
             start_dt = moscow_tz.localize(start_dt_naive)
             now = datetime.now(moscow_tz)
 
-            # Сколько прошло дней от старта до сейчас
-            days_passed = (now - start_dt).days
-            intervals_passed = max(0, (days_passed // interval_days) + 1)
-            event_start = start_dt + timedelta(days=intervals_passed * interval_days)
+            # --- Исправлено: находим ближайший event_start в будущем, включая ближайшее возможное событие ---
+            if now < start_dt:
+                event_start = start_dt
+            else:
+                days_passed = (now - start_dt).days
+                intervals_passed = (days_passed // interval_days) + 1
+                event_start = start_dt + timedelta(days=intervals_passed * interval_days)
 
             # Время публикации события за 3 часа до начала
             next_run = event_start - timedelta(hours=3)
-            # Если next_run в прошлом — поднимаем к следующему циклу
-            while next_run <= now:
-                event_start += timedelta(days=interval_days)
-                next_run = event_start - timedelta(hours=3)
+            # НЕ сдвигаем next_run дальше, если он сегодня (пусть событие появится даже если осталось мало времени)
 
             schedule_id = str(uuid.uuid4())
 
