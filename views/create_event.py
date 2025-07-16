@@ -5,6 +5,14 @@ from views.participant import ParticipantView
 from datetime import datetime
 from views.channel_select import ChannelSelectView
 
+# Добавлено для работы с часовым поясом Москвы
+try:
+    from zoneinfo import ZoneInfo
+    moscow_tz = ZoneInfo("Europe/Moscow")
+except ImportError:
+    import pytz
+    moscow_tz = pytz.timezone("Europe/Moscow")
+
 class CreateEventModal(discord.ui.Modal, title="Создание события"):
     name = discord.ui.TextInput(
         label="Название события",
@@ -34,7 +42,9 @@ class CreateEventModal(discord.ui.Modal, title="Создание события"
         time_str = self.time.value.strip()
         dt_str = f"{date_str} {time_str}"
         try:
-            dt = datetime.strptime(dt_str, "%d.%m.%Y %H:%M")
+            dt_naive = datetime.strptime(dt_str, "%d.%m.%Y %H:%M")
+            # Привязываем к московскому времени
+            dt = dt_naive.replace(tzinfo=moscow_tz)
             dt_str = dt.strftime("%d.%m.%Y %H:%M")
         except Exception:
             await interaction.response.send_message(
@@ -48,7 +58,7 @@ class CreateEventModal(discord.ui.Modal, title="Создание события"
             "datetime": dt_str,
             "comment": str(self.comment or "—"),
             "created_by": interaction.user.id,
-            "created_at": datetime.now().isoformat()
+            "created_at": datetime.now(moscow_tz).isoformat()  # фиксируем время создания по Москве
         }
 
         async def after_channel_selected(new_interaction, channel_id):

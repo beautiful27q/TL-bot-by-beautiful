@@ -8,6 +8,14 @@ import uuid
 from storage.persist import save_schedules
 from views.channel_select import ChannelSelectView
 
+# Добавлено для работы с часовым поясом Москвы
+try:
+    from zoneinfo import ZoneInfo
+    moscow_tz = ZoneInfo("Europe/Moscow")
+except ImportError:
+    import pytz
+    moscow_tz = pytz.timezone("Europe/Moscow")
+
 class RecurringEventModal(discord.ui.Modal, title="Создание повторяющегося события"):
     name = discord.ui.TextInput(label="Название события", placeholder="Например: Riftstone", required=True)
     start_date = discord.ui.TextInput(label="Дата старта (ДД.ММ.ГГГГ)", placeholder="08.07.2025", required=True)
@@ -20,7 +28,7 @@ class RecurringEventModal(discord.ui.Modal, title="Создание повтор
         try:
             start_date_str = self.start_date.value.strip()
             try:
-                start_date = datetime.strptime(start_date_str, "%d.%m.%Y")
+                start_date_naive = datetime.strptime(start_date_str, "%d.%m.%Y")
             except Exception:
                 await interaction.response.send_message(
                     f"❌ Некорректная дата! Используй формат ДД.ММ.ГГГГ, например: 08.07.2025",
@@ -38,8 +46,10 @@ class RecurringEventModal(discord.ui.Modal, title="Создание повтор
                 return
 
             interval_days = int(self.interval.value.strip())
-            next_run = start_date.replace(hour=hour, minute=minute, second=0, microsecond=0)
-            now = datetime.now()
+            # Привязываем к московскому времени
+            next_run = start_date_naive.replace(hour=hour, minute=minute, second=0, microsecond=0, tzinfo=moscow_tz)
+
+            now = datetime.now(moscow_tz)
             while next_run <= now:
                 next_run += timedelta(days=interval_days)
 
@@ -55,7 +65,7 @@ class RecurringEventModal(discord.ui.Modal, title="Создание повтор
                     "created_by": interaction.user.id,
                     "recurring_start_date": start_date_str,
                     "selected_channel_id": channel_id,
-                    "created_at": datetime.now().isoformat()
+                    "created_at": datetime.now(moscow_tz).isoformat()
                 }
                 if guild_id not in memory.schedules:
                     memory.schedules[guild_id] = []
@@ -81,7 +91,7 @@ class RecurringEventModal(discord.ui.Modal, title="Создание повтор
                         "recurring_start_date": start_date_str,
                         "recurring_interval_days": interval_days,
                         "schedule_id": schedule_id,
-                        "created_at": datetime.now().isoformat(),
+                        "created_at": datetime.now(moscow_tz).isoformat(),
                         "selected_channel_id": channel_id
                     }
                     event_state = EventState()
