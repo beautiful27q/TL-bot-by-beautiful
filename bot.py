@@ -116,8 +116,7 @@ async def recurring_event_scheduler():
             except Exception:
                 continue
 
-            # 1. Публикуем событие только если не опубликовано для этого цикла!
-            # (и только если next_run_dt < event_start_dt, чтобы не публиковать после завершения)
+            # 1. Публикуем событие только если не опубликовано для этого цикла и регистрация открыта!
             if now >= next_run_dt and not published and now < event_start_dt:
                 has_new_event = True
                 event_info = {
@@ -165,10 +164,12 @@ async def recurring_event_scheduler():
 
                 sched["published"] = True
 
-            # 2. После завершения события сдвигаем дату на следующий цикл и сбрасываем published
-            # (и не публикуем новое событие сразу после сдвига!)
+            # 2. После завершения события сдвигаем дату на следующий цикл и published сбрасываем
+            #    при этом гарантируем, что новая дата события действительно в будущем!
             if now >= event_start_dt and published:
-                event_start_dt = event_start_dt + timedelta(days=interval_days)
+                # Сдвигаем вперед пока не станет будущей
+                while event_start_dt <= now:
+                    event_start_dt += timedelta(days=interval_days)
                 next_run_dt = event_start_dt - timedelta(hours=3)
                 sched["event_start"] = event_start_dt.isoformat()
                 sched["next_run"] = next_run_dt.isoformat()
