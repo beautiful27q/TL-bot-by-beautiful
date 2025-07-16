@@ -8,13 +8,9 @@ import uuid
 from storage.persist import save_schedules
 from views.channel_select import ChannelSelectView
 
-# Добавлено для работы с часовым поясом Москвы
-try:
-    from zoneinfo import ZoneInfo
-    moscow_tz = ZoneInfo("Europe/Moscow")
-except ImportError:
-    import pytz
-    moscow_tz = pytz.timezone("Europe/Moscow")
+# Работа с часовым поясом Москвы через pytz
+import pytz
+moscow_tz = pytz.timezone("Europe/Moscow")
 
 class RecurringEventModal(discord.ui.Modal, title="Создание повторяющегося события"):
     name = discord.ui.TextInput(label="Название события", placeholder="Например: Riftstone", required=True)
@@ -46,8 +42,10 @@ class RecurringEventModal(discord.ui.Modal, title="Создание повтор
                 return
 
             interval_days = int(self.interval.value.strip())
-            # Привязываем к московскому времени
-            next_run = start_date_naive.replace(hour=hour, minute=minute, second=0, microsecond=0, tzinfo=moscow_tz)
+
+            # Создаём наивное время и локализуем его через pytz
+            next_run_naive = start_date_naive.replace(hour=hour, minute=minute, second=0, microsecond=0)
+            next_run = moscow_tz.localize(next_run_naive)
 
             now = datetime.now(moscow_tz)
             while next_run <= now:
@@ -61,7 +59,7 @@ class RecurringEventModal(discord.ui.Modal, title="Создание повтор
                     "name": self.name.value,
                     "interval_days": interval_days,
                     "comment": self.comment.value,
-                    "next_run": next_run.strftime("%d.%m.%Y %H:%M"),
+                    "next_run": next_run.isoformat(),  # Сохраняем ISO-строку с tzinfo
                     "created_by": interaction.user.id,
                     "recurring_start_date": start_date_str,
                     "selected_channel_id": channel_id,
@@ -84,7 +82,7 @@ class RecurringEventModal(discord.ui.Modal, title="Создание повтор
                     dt_str = next_run.strftime("%d.%m.%Y %H:%M")
                     event_info = {
                         "name": str(self.name.value),
-                        "datetime": dt_str,
+                        "datetime": next_run.isoformat(),  # Сохраняем ISO-строку с tzinfo
                         "comment": str(self.comment.value or "—"),
                         "created_by": interaction.user.id,
                         "is_recurring": True,
