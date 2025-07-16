@@ -116,7 +116,19 @@ async def recurring_event_scheduler():
             except Exception:
                 continue
 
-            # 1. Публикуем событие только если не опубликовано для этого цикла и регистрация открыта!
+            # 1. Если событие завершено, сдвигаем дату, сбрасываем published, НЕ публикуем в этом же цикле!
+            if now >= event_start_dt and published:
+                # Если бот "застрял" или был выключен, сдвигаем дату до ближайшей будущей
+                while event_start_dt <= now:
+                    event_start_dt += timedelta(days=interval_days)
+                next_run_dt = event_start_dt - timedelta(hours=3)
+                sched["event_start"] = event_start_dt.isoformat()
+                sched["next_run"] = next_run_dt.isoformat()
+                sched["published"] = False
+                # Пропускаем публикацию в этом цикле!
+                continue
+
+            # 2. Публикуем событие только если регистрация открыта!
             if now >= next_run_dt and not published and now < event_start_dt:
                 has_new_event = True
                 event_info = {
@@ -163,17 +175,6 @@ async def recurring_event_scheduler():
                     sched["channel_id"] = sent_message.channel.id
 
                 sched["published"] = True
-
-            # 2. После завершения события сдвигаем дату на следующий цикл и published сбрасываем
-            #    при этом гарантируем, что новая дата события действительно в будущем!
-            if now >= event_start_dt and published:
-                # Сдвигаем вперед пока не станет будущей
-                while event_start_dt <= now:
-                    event_start_dt += timedelta(days=interval_days)
-                next_run_dt = event_start_dt - timedelta(hours=3)
-                sched["event_start"] = event_start_dt.isoformat()
-                sched["next_run"] = next_run_dt.isoformat()
-                sched["published"] = False
 
     if has_new_event:
         for guild in bot.guilds:
